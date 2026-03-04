@@ -4,9 +4,17 @@
   "description": "MCP server for the Avalanche.org Public API map-layer endpoints",
   "type": "module",
   "main": "dist/src/index.js",
+  "bin": {
+    "avalanche-org-mcp-server": "dist/src/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build --silent",
     "start": "node dist/src/index.js",
+    "example": "npm run build --silent && node dist/src/example.js",
     "test": "npm run build --silent && node --test dist/test/*.test.js"
   },
   "keywords": [
@@ -17,6 +25,17 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haydenwade/avalanche-org-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/haydenwade/avalanche-org-mcp-server/issues"
+  },
+  "homepage": "https://github.com/haydenwade/avalanche-org-mcp-server#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },

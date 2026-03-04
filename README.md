@@ -1,109 +1,84 @@
 # avalanche-org-mcp-server
 
+[![npm version](https://img.shields.io/npm/v/avalanche-org-mcp-server)](https://www.npmjs.com/package/avalanche-org-mcp-server)
+[![Publish npm package](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/npm-publish.yml/badge.svg)](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/npm-publish.yml)
+[![Publish container image](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/docker-publish.yml)
+[![GHCR package](https://img.shields.io/badge/ghcr-ghcr.io%2Fhaydenwade%2Favalanche--org--mcp--server-2ea44f)](https://github.com/haydenwade/avalanche-org-mcp-server/pkgs/container/avalanche-org-mcp-server)
+
 MCP server for the [Avalanche.org Public API](https://api.avalanche.org/) map-layer endpoints.
 
-This server provides structured tools for:
-- Looking up avalanche danger ratings by latitude/longitude
-- Looking up historic avalanche danger ratings by latitude/longitude (`day=YYYY-MM-DD`)
-- Returning raw `map-layer` GeoJSON (all centers or a specific avalanche center)
+## Features
 
-The implementation is based on the [Avalanche.org Public API docs](https://github.com/NationalAvalancheCenter/Avalanche.org-Public-API-Docs).
+- Avalanche danger lookup by latitude/longitude
+- Historic avalanche danger lookup by latitude/longitude (`day=YYYY-MM-DD`)
+- Raw `map-layer` GeoJSON access (all centers or one center)
+- Structured output with forecast links, region metadata, and safety context
 
-## Safety
+## Install
 
-Tool outputs include a short safety disclaimer. Avalanche conditions can change rapidly and may vary within a forecast zone. Always confirm the official avalanche center forecast before making travel decisions.
+### Method 1: `npx` (recommended)
 
-## Tools
-
-### `avalanche_danger_rating_by_point`
-
-Inputs:
+No global install required:
 
 ```json
 {
-  "lat": 40.5763,
-  "lon": -111.7522,
-  "preferNearest": true,
-  "centerId": "UAC"
+  "mcpServers": {
+    "avalanche-org": {
+      "command": "npx",
+      "args": ["-y", "avalanche-org-mcp-server"]
+    }
+  }
 }
 ```
 
-Output (structured JSON):
-- `match`: `inside_zone` | `nearest_zone` | `no_match`
-- `distance_km`, `distance_miles`
-- `zone`, `center`, `danger`
-- `travel_advice`, `forecast_url`, `validity`, `warning`
-- `region` (includes all region properties)
-- `meta` (source, cache info, disclaimer)
-
-### `historic_avalanche_danger_rating_by_point`
-
-Same as `avalanche_danger_rating_by_point`, but requires `day`:
-
-```json
-{
-  "lat": 40.5763,
-  "lon": -111.7522,
-  "day": "2026-02-24",
-  "preferNearest": true
-}
-```
-
-### `raw_map_layer`
-
-Returns the raw Avalanche.org GeoJSON FeatureCollection for all centers.
-
-Inputs:
-
-```json
-{
-  "day": "2026-02-24"
-}
-```
-
-Output:
-
-```json
-{
-  "geojson": {},
-  "meta": {}
-}
-```
-
-### `raw_map_layer_by_avalanche_center`
-
-Returns the raw Avalanche.org GeoJSON FeatureCollection for one center.
-
-Inputs:
-
-```json
-{
-  "centerId": "CBAC",
-  "day": "2026-02-24"
-}
-```
-
-## Implementation Notes
-
-- Uses in-memory caching keyed by center/day (for example: `all:today`, `UAC:2026-02-24`)
-- Current-day cache TTL follows a dynamic Mountain Time schedule similar to `snow-data`
-- Historic (`day`) responses cache for 24 hours
-- Point-in-polygon supports both `Polygon` and `MultiPolygon`
-- Nearest-zone fallback uses a simple vertex-distance heuristic (haversine distance in km)
-
-## Build and Run
-
-Requires Node.js `>=18`.
+### Method 2: Global npm install
 
 ```bash
-npm install
-npm run build
-npm start
+npm install -g avalanche-org-mcp-server
 ```
 
-## Usage with Claude Desktop
+Then configure Claude Desktop:
 
-Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "avalanche-org": {
+      "command": "avalanche-org-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+### Method 3: Run with Docker
+
+```bash
+docker pull ghcr.io/haydenwade/avalanche-org-mcp-server:latest
+```
+
+Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "avalanche-org": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "ghcr.io/haydenwade/avalanche-org-mcp-server:latest"]
+    }
+  }
+}
+```
+
+### Method 4: Build from source
+
+```bash
+git clone https://github.com/haydenwade/avalanche-org-mcp-server.git
+cd avalanche-org-mcp-server
+npm install
+npm run build
+```
+
+Claude Desktop config:
 
 ```json
 {
@@ -116,19 +91,80 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 }
 ```
 
-Or run from the repo via `npm start`:
+## Available Tools
+
+### `avalanche_danger_rating_by_point`
+
+Looks up current avalanche danger by point.
+
+Input example:
 
 ```json
 {
-  "mcpServers": {
-    "avalanche-org": {
-      "command": "npm",
-      "args": ["start", "--silent"],
-      "cwd": "/absolute/path/to/avalanche-org-mcp-server"
-    }
-  }
+  "lat": 40.5763,
+  "lon": -111.7522,
+  "preferNearest": true,
+  "centerId": "UAC"
 }
 ```
+
+Returns:
+
+- Match type (`inside_zone`, `nearest_zone`, `no_match`)
+- Distance info
+- Region, center, and danger rating
+- Forecast and validity metadata
+
+### `historic_avalanche_danger_rating_by_point`
+
+Same lookup flow, but for a required `day`:
+
+```json
+{
+  "lat": 40.5763,
+  "lon": -111.7522,
+  "day": "2026-02-24",
+  "preferNearest": true
+}
+```
+
+### `raw_map_layer`
+
+Returns raw Avalanche.org map-layer GeoJSON for all centers.
+
+### `raw_map_layer_by_avalanche_center`
+
+Returns raw Avalanche.org map-layer GeoJSON for one center.
+
+## Development
+
+Requires Node.js `>=18`.
+
+```bash
+npm install
+npm test
+```
+
+## Release Automation
+
+This repository includes GitHub Actions for publishing:
+
+- npm: `.github/workflows/npm-publish.yml`
+- GitHub Container Registry (GHCR): `.github/workflows/docker-publish.yml`
+
+Required repository secrets:
+
+- `NPM_TOKEN`
+
+Optional repository variable:
+
+- `GHCR_IMAGE_NAME` (defaults to `ghcr.io/haydenwade/avalanche-org-mcp-server`)
+
+Both workflows run on `release.published` and can also be run manually via `workflow_dispatch`.
+
+## Safety
+
+Tool outputs include a short safety disclaimer. Avalanche conditions can change rapidly and may vary within a forecast zone. Always confirm the official avalanche center forecast before making travel decisions.
 
 ## Attribution
 

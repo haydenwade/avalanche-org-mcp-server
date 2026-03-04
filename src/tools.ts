@@ -5,7 +5,7 @@ import {
   AVALANCHE_SOURCE_NAME,
   SAFETY_DISCLAIMER,
 } from "./constants.js";
-import { getMapLayer } from "./api/mapLayer.js";
+import { getMapLayer, type MapLayerResult } from "./api/mapLayer.js";
 import { lookupDangerRatingByPoint } from "./lib/dangerLookup.js";
 import { assertValidDay, normalizeOptionalCenterId } from "./lib/validation.js";
 
@@ -97,15 +97,49 @@ const rawMapLayerOutputSchema = {
   }),
 };
 
-function rawMapLayerResponse(args: {
+type DangerLookupToolArgs = {
+  lat: number;
+  lon: number;
+  preferNearest?: boolean;
+  centerId?: string;
+  day?: string;
+};
+
+const dangerLookupInputSchema = {
+  lat: z.number().describe("Latitude in decimal degrees."),
+  lon: z.number().describe("Longitude in decimal degrees."),
+  preferNearest: z
+    .boolean()
+    .optional()
+    .describe("If true (default), return the nearest zone when the point is outside all polygons."),
+  centerId: z
+    .string()
+    .optional()
+    .describe("Optional avalanche center ID to scope the search (example: CBAC)."),
+};
+
+const optionalHistoricDayInputSchema = {
+  day: z.string().optional().describe("Optional historic day in YYYY-MM-DD format."),
+};
+
+function parseOptionalDay(day?: string): string | undefined {
+  return day ? assertValidDay(day) : undefined;
+}
+
+function assertRequiredCenterId(centerId: string): string {
+  const normalizedCenterId = normalizeOptionalCenterId(centerId);
+  if (!normalizedCenterId) {
+    throw new Error("centerId is required.");
+  }
+  return normalizedCenterId;
+}
+
+function rawMapLayerToolResponse(args: {
   geojson: unknown;
-  sourceRequestUrl: string;
-  cacheKey: string;
-  cacheStatus: "hit" | "miss" | "stale";
-  fetchedAt: number;
-  expiresAt: number;
-  ttlMs: number;
-  cacheError?: string;
+  mapLayer: Pick<
+    MapLayerResult,
+    "requestUrl" | "cacheKey" | "cacheStatus" | "fetchedAt" | "expiresAt" | "ttlMs" | "cacheError"
+  >;
   centerId?: string;
   day?: string;
 }) {
@@ -114,14 +148,14 @@ function rawMapLayerResponse(args: {
     meta: {
       source: AVALANCHE_SOURCE_NAME,
       source_docs: AVALANCHE_PUBLIC_API_DOCS_URL,
-      request_url: args.sourceRequestUrl,
+      request_url: args.mapLayer.requestUrl,
       cache: {
-        key: args.cacheKey,
-        status: args.cacheStatus,
-        fetched_at: new Date(args.fetchedAt).toISOString(),
-        expires_at: new Date(args.expiresAt).toISOString(),
-        ttl_seconds: Math.round(args.ttlMs / 1000),
-        ...(args.cacheError ? { error: args.cacheError } : {}),
+        key: args.mapLayer.cacheKey,
+        status: args.mapLayer.cacheStatus,
+        fetched_at: new Date(args.mapLayer.fetchedAt).toISOString(),
+        expires_at: new Date(args.mapLayer.expiresAt).toISOString(),
+        ttl_seconds: Math.round(args.mapLayer.ttlMs / 1000),
+        ...(args.mapLayer.cacheError ? { error: args.mapLayer.cacheError } : {}),
       },
       disclaimer: SAFETY_DISCLAIMER,
       ...(args.centerId ? { center_id: args.centerId } : {}),
@@ -130,33 +164,27 @@ function rawMapLayerResponse(args: {
   };
 }
 
+async function runDangerLookup(args: DangerLookupToolArgs) {
+  return lookupDangerRatingByPoint({
+    lat: args.lat,
+    lon: args.lon,
+    preferNearest: args.preferNearest ?? true,
+    centerId: args.centerId,
+    day: args.day,
+  });
+}
+
 export function registerAvalancheTools(server: McpServer) {
   server.registerTool(
     "avalanche_danger_rating_by_point",
     {
       description:
         "Get the current avalanche danger rating and forecast metadata for the avalanche zone containing a latitude/longitude point. Can fall back to the nearest zone.",
-      inputSchema: {
-        lat: z.number().describe("Latitude in decimal degrees."),
-        lon: z.number().describe("Longitude in decimal degrees."),
-        preferNearest: z
-          .boolean()
-          .optional()
-          .describe("If true (default), return the nearest zone when the point is outside all polygons."),
-        centerId: z
-          .string()
-          .optional()
-          .describe("Optional avalanche center ID to scope the search (example: CBAC)."),
-      },
+      inputSchema: dangerLookupInputSchema,
       outputSchema: dangerPointOutputSchema,
     },
     async (args) => {
-      const result = await lookupDangerRatingByPoint({
-        lat: args.lat,
-        lon: args.lon,
-        preferNearest: args.preferNearest ?? true,
-        centerId: args.centerId,
-      });
+      const result = await runDangerLookup(args);
       return jsonToolResult(result);
     },
   );
@@ -166,24 +194,16 @@ export function registerAvalancheTools(server: McpServer) {
     {
       description:
         "Return the raw Avalanche.org map-layer GeoJSON FeatureCollection for all avalanche centers. Supports an optional historic day (YYYY-MM-DD).",
-      inputSchema: {
-        day: z.string().optional().describe("Optional historic day in YYYY-MM-DD format."),
-      },
+      inputSchema: optionalHistoricDayInputSchema,
       outputSchema: rawMapLayerOutputSchema,
     },
     async (args) => {
-      const day = args.day ? assertValidDay(args.day) : undefined;
+      const day = parseOptionalDay(args.day);
       const mapLayer = await getMapLayer({ day });
       return jsonToolResult(
-        rawMapLayerResponse({
+        rawMapLayerToolResponse({
           geojson: mapLayer.geojson,
-          sourceRequestUrl: mapLayer.requestUrl,
-          cacheKey: mapLayer.cacheKey,
-          cacheStatus: mapLayer.cacheStatus,
-          fetchedAt: mapLayer.fetchedAt,
-          expiresAt: mapLayer.expiresAt,
-          ttlMs: mapLayer.ttlMs,
-          cacheError: mapLayer.cacheError,
+          mapLayer,
           day,
         }),
       );
@@ -197,29 +217,19 @@ export function registerAvalancheTools(server: McpServer) {
         "Return the raw Avalanche.org map-layer GeoJSON FeatureCollection for a specific avalanche center ID. Supports an optional historic day (YYYY-MM-DD).",
       inputSchema: {
         centerId: z.string().describe("Avalanche center ID (example: CBAC)."),
-        day: z.string().optional().describe("Optional historic day in YYYY-MM-DD format."),
+        ...optionalHistoricDayInputSchema,
       },
       outputSchema: rawMapLayerOutputSchema,
     },
     async (args) => {
-      const centerId = normalizeOptionalCenterId(args.centerId);
-      if (!centerId) {
-        throw new Error("centerId is required.");
-      }
-
-      const day = args.day ? assertValidDay(args.day) : undefined;
+      const centerId = assertRequiredCenterId(args.centerId);
+      const day = parseOptionalDay(args.day);
       const mapLayer = await getMapLayer({ centerId, day });
 
       return jsonToolResult(
-        rawMapLayerResponse({
+        rawMapLayerToolResponse({
           geojson: mapLayer.geojson,
-          sourceRequestUrl: mapLayer.requestUrl,
-          cacheKey: mapLayer.cacheKey,
-          cacheStatus: mapLayer.cacheStatus,
-          fetchedAt: mapLayer.fetchedAt,
-          expiresAt: mapLayer.expiresAt,
-          ttlMs: mapLayer.ttlMs,
-          cacheError: mapLayer.cacheError,
+          mapLayer,
           centerId,
           day,
         }),
@@ -233,17 +243,8 @@ export function registerAvalancheTools(server: McpServer) {
       description:
         "Get the avalanche danger rating and forecast metadata for the avalanche zone containing a latitude/longitude point on a specific historic day (YYYY-MM-DD). Can fall back to the nearest zone.",
       inputSchema: {
-        lat: z.number().describe("Latitude in decimal degrees."),
-        lon: z.number().describe("Longitude in decimal degrees."),
+        ...dangerLookupInputSchema,
         day: z.string().describe("Historic day in YYYY-MM-DD format."),
-        preferNearest: z
-          .boolean()
-          .optional()
-          .describe("If true (default), return the nearest zone when the point is outside all polygons."),
-        centerId: z
-          .string()
-          .optional()
-          .describe("Optional avalanche center ID to scope the search (example: CBAC)."),
       },
       outputSchema: {
         ...dangerPointOutputSchema,
@@ -252,13 +253,7 @@ export function registerAvalancheTools(server: McpServer) {
     },
     async (args) => {
       const day = assertValidDay(args.day);
-      const result = await lookupDangerRatingByPoint({
-        lat: args.lat,
-        lon: args.lon,
-        day,
-        preferNearest: args.preferNearest ?? true,
-        centerId: args.centerId,
-      });
+      const result = await runDangerLookup({ ...args, day });
 
       return jsonToolResult({
         ...result,

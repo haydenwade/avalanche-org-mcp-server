@@ -58,6 +58,10 @@ function pointOnSegment(
   if (dot < -SEGMENT_EPSILON) return false;
 
   const lenSq = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  if (lenSq <= SEGMENT_EPSILON) {
+    return Math.abs(px - x1) <= SEGMENT_EPSILON && Math.abs(py - y1) <= SEGMENT_EPSILON;
+  }
+
   if (dot - lenSq > SEGMENT_EPSILON) return false;
 
   return true;
