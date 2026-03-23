@@ -1,6 +1,6 @@
 {
   "name": "avalanche-org-mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for the Avalanche.org Public API map-layer endpoints",
   "type": "module",
   "main": "dist/src/index.js",
