@@ -5,7 +5,7 @@ import {
   AVALANCHE_SOURCE_NAME,
   SAFETY_DISCLAIMER,
 } from "./constants.js";
-import { getMapLayer, type MapLayerResult } from "./api/mapLayer.js";
+import { getMapLayer } from "./api/mapLayer.js";
 import { lookupDangerRatingByPoint } from "./lib/dangerLookup.js";
 import { assertValidDay, normalizeOptionalCenterId } from "./lib/validation.js";
 
@@ -30,20 +30,10 @@ function jsonToolResult<T extends JsonRecord>(structuredContent: T) {
 
 const nullableIdSchema = z.union([z.string(), z.number()]).nullable();
 
-const cacheMetaSchema = {
-  key: z.string(),
-  status: z.enum(["hit", "miss", "stale"]),
-  fetched_at: z.string(),
-  expires_at: z.string(),
-  ttl_seconds: z.number(),
-  error: z.string().optional(),
-};
-
 const sourceMetaSchema = {
   source: z.string(),
   source_docs: z.string(),
   request_url: z.string(),
-  cache: z.object(cacheMetaSchema),
   disclaimer: z.string(),
 };
 
@@ -90,7 +80,6 @@ const rawMapLayerOutputSchema = {
     source: z.string(),
     source_docs: z.string(),
     request_url: z.string(),
-    cache: z.object(cacheMetaSchema),
     disclaimer: z.string(),
     center_id: z.string().nullable().optional(),
     day: z.string().nullable().optional(),
@@ -136,10 +125,7 @@ function assertRequiredCenterId(centerId: string): string {
 
 function rawMapLayerToolResponse(args: {
   geojson: unknown;
-  mapLayer: Pick<
-    MapLayerResult,
-    "requestUrl" | "cacheKey" | "cacheStatus" | "fetchedAt" | "expiresAt" | "ttlMs" | "cacheError"
-  >;
+  requestUrl: string;
   centerId?: string;
   day?: string;
 }) {
@@ -148,15 +134,7 @@ function rawMapLayerToolResponse(args: {
     meta: {
       source: AVALANCHE_SOURCE_NAME,
       source_docs: AVALANCHE_PUBLIC_API_DOCS_URL,
-      request_url: args.mapLayer.requestUrl,
-      cache: {
-        key: args.mapLayer.cacheKey,
-        status: args.mapLayer.cacheStatus,
-        fetched_at: new Date(args.mapLayer.fetchedAt).toISOString(),
-        expires_at: new Date(args.mapLayer.expiresAt).toISOString(),
-        ttl_seconds: Math.round(args.mapLayer.ttlMs / 1000),
-        ...(args.mapLayer.cacheError ? { error: args.mapLayer.cacheError } : {}),
-      },
+      request_url: args.requestUrl,
       disclaimer: SAFETY_DISCLAIMER,
       ...(args.centerId ? { center_id: args.centerId } : {}),
       ...(args.day ? { day: args.day } : {}),
@@ -203,7 +181,7 @@ export function registerAvalancheTools(server: McpServer) {
       return jsonToolResult(
         rawMapLayerToolResponse({
           geojson: mapLayer.geojson,
-          mapLayer,
+          requestUrl: mapLayer.requestUrl,
           day,
         }),
       );
@@ -229,7 +207,7 @@ export function registerAvalancheTools(server: McpServer) {
       return jsonToolResult(
         rawMapLayerToolResponse({
           geojson: mapLayer.geojson,
-          mapLayer,
+          requestUrl: mapLayer.requestUrl,
           centerId,
           day,
         }),

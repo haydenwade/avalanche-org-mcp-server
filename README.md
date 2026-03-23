@@ -3,22 +3,21 @@
 [![npm version](https://img.shields.io/npm/v/avalanche-org-mcp-server)](https://www.npmjs.com/package/avalanche-org-mcp-server)
 [![Publish npm package](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/npm-publish.yml/badge.svg)](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/npm-publish.yml)
 [![Publish container image](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/haydenwade/avalanche-org-mcp-server/actions/workflows/docker-publish.yml)
-[![GHCR package](https://img.shields.io/badge/ghcr-ghcr.io%2Fhaydenwade%2Favalanche--org--mcp--server-2ea44f)](https://github.com/haydenwade/avalanche-org-mcp-server/pkgs/container/avalanche-org-mcp-server)
 
-MCP server for the [Avalanche.org Public API](https://api.avalanche.org/) map-layer endpoints.
+A minimal [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that wraps the [Avalanche.org Public API](https://api.avalanche.org/) map-layer endpoints. It lets LLMs look up avalanche danger ratings by location, retrieve raw forecast GeoJSON, and query historic conditions.
 
 ## Features
 
-- Avalanche danger lookup by latitude/longitude
-- Historic avalanche danger lookup by latitude/longitude (`day=YYYY-MM-DD`)
-- Raw `map-layer` GeoJSON access (all centers or one center)
-- Structured output with forecast links, region metadata, and safety context
+- **Danger lookup by lat/lon** — find the avalanche zone for any point and get its current danger rating
+- **Historic danger lookup** — same as above, but for a specific past date
+- **Raw map-layer GeoJSON** — full FeatureCollection for all avalanche centers, or scoped to one center
+- **Safety context** — every response includes a disclaimer and a link to the official forecast
 
-## Install
+## Quick Start
 
-### Method 1: `npx` (recommended)
+### Claude Desktop (npx — recommended)
 
-No global install required:
+Add this to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
@@ -31,32 +30,29 @@ No global install required:
 }
 ```
 
-### Method 2: Global npm install
+No install required. Claude will download and run it automatically.
+
+### Global npm install
 
 ```bash
 npm install -g avalanche-org-mcp-server
 ```
 
-Then configure Claude Desktop:
-
 ```json
 {
   "mcpServers": {
     "avalanche-org": {
-      "command": "avalanche-org-mcp-server",
-      "args": []
+      "command": "avalanche-org-mcp-server"
     }
   }
 }
 ```
 
-### Method 3: Run with Docker
+### Docker
 
 ```bash
 docker pull ghcr.io/haydenwade/avalanche-org-mcp-server:latest
 ```
-
-Claude Desktop config:
 
 ```json
 {
@@ -69,7 +65,7 @@ Claude Desktop config:
 }
 ```
 
-### Method 4: Build from source
+### From source
 
 ```bash
 git clone https://github.com/haydenwade/avalanche-org-mcp-server.git
@@ -77,8 +73,6 @@ cd avalanche-org-mcp-server
 npm install
 npm run build
 ```
-
-Claude Desktop config:
 
 ```json
 {
@@ -91,84 +85,117 @@ Claude Desktop config:
 }
 ```
 
-## Available Tools
+## Tools
 
 ### `avalanche_danger_rating_by_point`
 
-Looks up current avalanche danger by point.
+Get the current avalanche danger rating for a lat/lon point. Returns the zone the point falls in, or the nearest zone if `preferNearest` is true.
 
-Input example:
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `lat` | number | yes | Latitude in decimal degrees |
+| `lon` | number | yes | Longitude in decimal degrees |
+| `preferNearest` | boolean | no | Fall back to nearest zone if point is outside all polygons (default: `true`) |
+| `centerId` | string | no | Scope search to a specific avalanche center (e.g. `"UAC"`, `"CBAC"`) |
+
+**Example input:**
 
 ```json
-{
-  "lat": 40.5763,
-  "lon": -111.7522,
-  "preferNearest": true,
-  "centerId": "UAC"
-}
+{ "lat": 40.5763, "lon": -111.7522, "preferNearest": true, "centerId": "UAC" }
 ```
 
-Returns:
+**Returns:** match type, danger level/label/color, zone name, center info, forecast URL, travel advice, and validity dates.
 
-- Match type (`inside_zone`, `nearest_zone`, `no_match`)
-- Distance info
-- Region, center, and danger rating
-- Forecast and validity metadata
+---
 
 ### `historic_avalanche_danger_rating_by_point`
 
-Same lookup flow, but for a required `day`:
+Same as above, but for a specific historic date.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `lat` | number | yes | Latitude in decimal degrees |
+| `lon` | number | yes | Longitude in decimal degrees |
+| `day` | string | yes | Date in `YYYY-MM-DD` format |
+| `preferNearest` | boolean | no | Fall back to nearest zone (default: `true`) |
+| `centerId` | string | no | Scope to an avalanche center |
+
+**Example input:**
 
 ```json
-{
-  "lat": 40.5763,
-  "lon": -111.7522,
-  "day": "2026-02-24",
-  "preferNearest": true
-}
+{ "lat": 40.5763, "lon": -111.7522, "day": "2025-02-24", "preferNearest": true }
 ```
+
+---
 
 ### `raw_map_layer`
 
-Returns raw Avalanche.org map-layer GeoJSON for all centers.
+Returns the raw Avalanche.org map-layer GeoJSON FeatureCollection for **all** avalanche centers.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `day` | string | no | Historic date in `YYYY-MM-DD` format |
+
+---
 
 ### `raw_map_layer_by_avalanche_center`
 
-Returns raw Avalanche.org map-layer GeoJSON for one center.
+Returns the raw map-layer GeoJSON FeatureCollection for a **single** avalanche center.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `centerId` | string | yes | Avalanche center ID (e.g. `"CBAC"`, `"NWAC"`, `"UAC"`) |
+| `day` | string | no | Historic date in `YYYY-MM-DD` format |
 
 ## Development
 
-Requires Node.js `>=18`.
+Requires Node.js >= 18.
 
 ```bash
 npm install
+npm run build
 npm test
 ```
 
-## Release Automation
+### Project structure
 
-This repository includes GitHub Actions for publishing:
+```
+src/
+  index.ts          # Entry point — stdio transport
+  server.ts         # McpServer setup
+  tools.ts          # Tool registration and schemas
+  constants.ts      # API URLs, timeouts, disclaimer text
+  types.ts          # GeoJSON type definitions
+  api/
+    client.ts       # HTTP client (fetch wrapper)
+    mapLayer.ts     # Map-layer fetch + GeoJSON normalization
+  lib/
+    geometry.ts     # Point-in-polygon, haversine distance, bounds
+    dangerLookup.ts # Danger rating lookup logic
+    validation.ts   # Date and coordinate validation
+test/
+  *.test.ts         # Tests (node:test)
+```
 
-- npm: `.github/workflows/npm-publish.yml`
-- GitHub Container Registry (GHCR): `.github/workflows/docker-publish.yml`
+## Contributing
 
-Required repository secrets:
-
-- `NPM_TOKEN`
-
-Optional repository variable:
-
-- `GHCR_IMAGE_NAME` (defaults to `ghcr.io/haydenwade/avalanche-org-mcp-server`)
-
-Both workflows run on `release.published` and can also be run manually via `workflow_dispatch`.
+1. Fork the repo
+2. Create a feature branch (`git checkout -b my-feature`)
+3. Make your changes and add tests
+4. Run `npm test` to make sure everything passes
+5. Open a pull request
 
 ## Safety
 
-Tool outputs include a short safety disclaimer. Avalanche conditions can change rapidly and may vary within a forecast zone. Always confirm the official avalanche center forecast before making travel decisions.
+Tool outputs include a safety disclaimer. Avalanche conditions change rapidly and may vary within a forecast zone. **Always confirm the official avalanche center forecast before making travel decisions.**
 
 ## Attribution
 
-- Data source: [Avalanche.org Public API](https://api.avalanche.org/)
-- Public API docs: [NationalAvalancheCenter/Avalanche.org-Public-API-Docs](https://github.com/NationalAvalancheCenter/Avalanche.org-Public-API-Docs)
+- Data: [Avalanche.org Public API](https://api.avalanche.org/)
+- API docs: [NationalAvalancheCenter/Avalanche.org-Public-API-Docs](https://github.com/NationalAvalancheCenter/Avalanche.org-Public-API-Docs)
 
 This project is not affiliated with Avalanche.org or the National Avalanche Center.
+
+## License
+
+MIT

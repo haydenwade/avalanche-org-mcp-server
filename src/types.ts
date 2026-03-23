@@ -63,5 +63,3 @@ export type NormalizedAvalancheFeature = {
   geometry: SupportedGeometry;
   bounds: Bounds;
 };
-
-export type CacheStatus = "hit" | "miss" | "stale";

@@ -73,14 +73,6 @@ export type DangerPointLookupOutput = {
     source: string;
     source_docs: string;
     request_url: string;
-    cache: {
-      key: string;
-      status: "hit" | "miss" | "stale";
-      fetched_at: string;
-      expires_at: string;
-      ttl_seconds: number;
-      error?: string;
-    };
     disclaimer: string;
   };
 };
@@ -215,14 +207,6 @@ export async function lookupDangerRatingByPoint(
       source: AVALANCHE_SOURCE_NAME,
       source_docs: AVALANCHE_PUBLIC_API_DOCS_URL,
       request_url: mapLayer.requestUrl,
-      cache: {
-        key: mapLayer.cacheKey,
-        status: mapLayer.cacheStatus,
-        fetched_at: new Date(mapLayer.fetchedAt).toISOString(),
-        expires_at: new Date(mapLayer.expiresAt).toISOString(),
-        ttl_seconds: Math.round(mapLayer.ttlMs / 1000),
-        ...(mapLayer.cacheError ? { error: mapLayer.cacheError } : {}),
-      },
       disclaimer: SAFETY_DISCLAIMER,
     },
   };
