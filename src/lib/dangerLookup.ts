@@ -1,8 +1,3 @@
-import {
-  AVALANCHE_PUBLIC_API_DOCS_URL,
-  AVALANCHE_SOURCE_NAME,
-  SAFETY_DISCLAIMER,
-} from "../constants.js";
 import { getMapLayer } from "../api/mapLayer.js";
 import {
   minDistanceToGeometryVerticesKm,
@@ -11,6 +6,7 @@ import {
 } from "./geometry.js";
 import { assertLatLon, normalizeOptionalCenterId } from "./validation.js";
 import type { NormalizedAvalancheFeature } from "../types.js";
+
 
 type DangerPointLookupRequest = {
   lat: number;
@@ -64,17 +60,6 @@ export type DangerPointLookupOutput = {
     end_date: string | null;
   };
   warning: unknown | null;
-  region: {
-    id: string | number | null;
-    geometry_type: string | null;
-    properties: Record<string, unknown> | null;
-  } | null;
-  meta: {
-    source: string;
-    source_docs: string;
-    request_url: string;
-    disclaimer: string;
-  };
 };
 
 function asString(value: unknown): string | null {
@@ -196,18 +181,5 @@ export async function lookupDangerRatingByPoint(
       end_date: asString(properties?.end_date),
     },
     warning: properties?.warning ?? null,
-    region: matchedFeature
-      ? {
-          id: matchedFeature.id,
-          geometry_type: matchedFeature.geometry.type,
-          properties: matchedFeature.properties as Record<string, unknown>,
-        }
-      : null,
-    meta: {
-      source: AVALANCHE_SOURCE_NAME,
-      source_docs: AVALANCHE_PUBLIC_API_DOCS_URL,
-      request_url: mapLayer.requestUrl,
-      disclaimer: SAFETY_DISCLAIMER,
-    },
   };
 }

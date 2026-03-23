@@ -11,7 +11,8 @@ A minimal [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) serve
 - **Danger lookup by lat/lon** — find the avalanche zone for any point and get its current danger rating
 - **Historic danger lookup** — same as above, but for a specific past date
 - **Raw map-layer GeoJSON** — full FeatureCollection for all avalanche centers, or scoped to one center
-- **Safety context** — every response includes a disclaimer and a link to the official forecast
+
+Data sourced from the [Avalanche.org Public API](https://api.avalanche.org/). See the [API docs](https://github.com/NationalAvalancheCenter/Avalanche.org-Public-API-Docs) for details.
 
 ## Quick Start
 
@@ -104,13 +105,47 @@ Get the current avalanche danger rating for a lat/lon point. Returns the zone th
 { "lat": 40.5763, "lon": -111.7522, "preferNearest": true, "centerId": "UAC" }
 ```
 
-**Returns:** match type, danger level/label/color, zone name, center info, forecast URL, travel advice, and validity dates.
+<details>
+<summary><strong>Example output</strong></summary>
+
+```json
+{
+  "match": "inside_zone",
+  "distance_km": 0,
+  "distance_miles": 0,
+  "zone": {
+    "id": "zone-1",
+    "name": "Salt Lake",
+    "state": "UT"
+  },
+  "center": {
+    "id": "UAC",
+    "name": "Utah Avalanche Center",
+    "timezone": "America/Denver",
+    "link": "https://utahavalanchecenter.org"
+  },
+  "danger": {
+    "level": 3,
+    "label": "Considerable",
+    "color": "#f1a302"
+  },
+  "travel_advice": "Dangerous avalanche conditions. Careful snowpack evaluation, cautious route-finding and conservative decision-making essential.",
+  "forecast_url": "https://utahavalanchecenter.org/forecast/salt-lake",
+  "validity": {
+    "start_date": "2026-03-22",
+    "end_date": "2026-03-23"
+  },
+  "warning": null
+}
+```
+
+</details>
 
 ---
 
 ### `historic_avalanche_danger_rating_by_point`
 
-Same as above, but for a specific historic date.
+Same as above, but for a specific historic date. Returns all the same fields plus `day`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -126,6 +161,27 @@ Same as above, but for a specific historic date.
 { "lat": 40.5763, "lon": -111.7522, "day": "2025-02-24", "preferNearest": true }
 ```
 
+<details>
+<summary><strong>Example output</strong></summary>
+
+```json
+{
+  "match": "inside_zone",
+  "distance_km": 0,
+  "distance_miles": 0,
+  "zone": { "id": "zone-1", "name": "Salt Lake", "state": "UT" },
+  "center": { "id": "UAC", "name": "Utah Avalanche Center", "..." : "..." },
+  "danger": { "level": 3, "label": "Considerable", "color": "#f1a302" },
+  "travel_advice": "Dangerous avalanche conditions. ...",
+  "forecast_url": "https://utahavalanchecenter.org/forecast/salt-lake",
+  "validity": { "start_date": "2025-02-24", "end_date": "2025-02-25" },
+  "warning": null,
+  "day": "2025-02-24"
+}
+```
+
+</details>
+
 ---
 
 ### `raw_map_layer`
@@ -135,6 +191,20 @@ Returns the raw Avalanche.org map-layer GeoJSON FeatureCollection for **all** av
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `day` | string | no | Historic date in `YYYY-MM-DD` format |
+
+<details>
+<summary><strong>Example output</strong></summary>
+
+```json
+{
+  "geojson": {
+    "type": "FeatureCollection",
+    "features": [ "... full GeoJSON features ..." ]
+  }
+}
+```
+
+</details>
 
 ---
 
@@ -147,6 +217,20 @@ Returns the raw map-layer GeoJSON FeatureCollection for a **single** avalanche c
 | `centerId` | string | yes | Avalanche center ID (e.g. `"CBAC"`, `"NWAC"`, `"UAC"`) |
 | `day` | string | no | Historic date in `YYYY-MM-DD` format |
 
+<details>
+<summary><strong>Example output</strong></summary>
+
+```json
+{
+  "geojson": {
+    "type": "FeatureCollection",
+    "features": [ "... full GeoJSON features ..." ]
+  }
+}
+```
+
+</details>
+
 ## Development
 
 Requires Node.js >= 18.
@@ -157,17 +241,21 @@ npm run build
 npm test
 ```
 
+To interactively test tools with the [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector):
+
+```bash
+npx @modelcontextprotocol/inspector node dist/src/index.js
+```
+
 ### Project structure
 
 ```
 src/
-  index.ts          # Entry point — stdio transport
-  server.ts         # McpServer setup
-  tools.ts          # Tool registration and schemas
-  constants.ts      # API URLs, timeouts, disclaimer text
+  index.ts          # Entry point — server setup + stdio transport
+  tools.ts          # Tool registration
+  constants.ts      # API URLs and timeouts
   types.ts          # GeoJSON type definitions
   api/
-    client.ts       # HTTP client (fetch wrapper)
     mapLayer.ts     # Map-layer fetch + GeoJSON normalization
   lib/
     geometry.ts     # Point-in-polygon, haversine distance, bounds
@@ -184,17 +272,6 @@ test/
 3. Make your changes and add tests
 4. Run `npm test` to make sure everything passes
 5. Open a pull request
-
-## Safety
-
-Tool outputs include a safety disclaimer. Avalanche conditions change rapidly and may vary within a forecast zone. **Always confirm the official avalanche center forecast before making travel decisions.**
-
-## Attribution
-
-- Data: [Avalanche.org Public API](https://api.avalanche.org/)
-- API docs: [NationalAvalancheCenter/Avalanche.org-Public-API-Docs](https://github.com/NationalAvalancheCenter/Avalanche.org-Public-API-Docs)
-
-This project is not affiliated with Avalanche.org or the National Avalanche Center.
 
 ## License
 

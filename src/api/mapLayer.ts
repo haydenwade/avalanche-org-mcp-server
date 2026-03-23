@@ -1,5 +1,8 @@
-import { AVALANCHE_MAP_LAYER_PATH } from "../constants.js";
-import { buildUrl, fetchJson } from "./client.js";
+import {
+  AVALANCHE_API_BASE_URL,
+  AVALANCHE_MAP_LAYER_PATH,
+  DEFAULT_FETCH_TIMEOUT_MS,
+} from "../constants.js";
 import { computeBounds } from "../lib/geometry.js";
 import type {
   AvalancheFeatureProperties,
@@ -10,16 +13,53 @@ import type {
   SupportedGeometry,
 } from "../types.js";
 
-type MapLayerRequest = {
-  centerId?: string;
-  day?: string;
-};
-
 export type MapLayerResult = {
-  requestUrl: string;
   geojson: AvalancheMapLayerFeatureCollection;
   features: NormalizedAvalancheFeature[];
 };
+
+async function fetchJson(url: URL): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS);
+  timeout.unref?.();
+
+  const requestUrl = url.toString();
+
+  try {
+    const response = await fetch(requestUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const bodyText = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `Avalanche.org request failed (${response.status}) for ${requestUrl}: ${bodyText.slice(0, 300)}`,
+      );
+    }
+
+    try {
+      return JSON.parse(bodyText);
+    } catch (error) {
+      throw new Error(
+        `Avalanche.org returned invalid JSON for ${requestUrl}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Avalanche.org request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms: ${requestUrl}`);
+    }
+    if (error instanceof Error) throw error;
+    throw new Error(`Avalanche.org request failed for ${requestUrl}: ${String(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -96,11 +136,6 @@ function normalizeGeometry(value: unknown): SupportedGeometry | null {
   return null;
 }
 
-function normalizeProperties(value: unknown): AvalancheFeatureProperties {
-  if (!isRecord(value)) return {};
-  return value as AvalancheFeatureProperties;
-}
-
 function normalizeFeature(value: unknown): NormalizedAvalancheFeature | null {
   if (!isRecord(value)) return null;
 
@@ -109,16 +144,10 @@ function normalizeFeature(value: unknown): NormalizedAvalancheFeature | null {
 
   const id =
     typeof value.id === "string" || typeof value.id === "number" ? value.id : null;
-  const properties = normalizeProperties(value.properties);
+  const properties = (isRecord(value.properties) ? value.properties : {}) as AvalancheFeatureProperties;
   const raw = value as AvalancheMapLayerFeature;
 
-  return {
-    raw,
-    id,
-    properties,
-    geometry,
-    bounds: computeBounds(geometry),
-  };
+  return { raw, id, properties, geometry, bounds: computeBounds(geometry) };
 }
 
 function normalizeFeatureCollection(raw: unknown): {
@@ -146,22 +175,18 @@ function normalizeFeatureCollection(raw: unknown): {
   return { geojson, features };
 }
 
-function buildMapLayerPath(centerId?: string): string {
-  if (!centerId) return AVALANCHE_MAP_LAYER_PATH;
-  return `${AVALANCHE_MAP_LAYER_PATH}/${encodeURIComponent(centerId)}`;
-}
+export async function getMapLayer(request: { centerId?: string; day?: string } = {}): Promise<MapLayerResult> {
+  const path = request.centerId
+    ? `${AVALANCHE_MAP_LAYER_PATH}/${encodeURIComponent(request.centerId)}`
+    : AVALANCHE_MAP_LAYER_PATH;
 
-export async function getMapLayer(request: MapLayerRequest = {}): Promise<MapLayerResult> {
-  const url = buildUrl({
-    path: buildMapLayerPath(request.centerId),
-    day: request.day,
-  });
-  const raw = await fetchJson<unknown>(url);
+  const url = new URL(path, AVALANCHE_API_BASE_URL);
+  if (request.day) {
+    url.searchParams.set("day", request.day);
+  }
+
+  const raw = await fetchJson(url);
   const { geojson, features } = normalizeFeatureCollection(raw);
 
-  return {
-    requestUrl: url.toString(),
-    geojson,
-    features,
-  };
+  return { geojson, features };
 }

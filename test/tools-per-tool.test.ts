@@ -4,7 +4,6 @@ import { registerAvalancheTools } from "../src/tools.js";
 
 type ToolResult = {
   content?: Array<{ type: string; text?: string }>;
-  structuredContent?: Record<string, unknown>;
 };
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
@@ -15,7 +14,7 @@ class FakeServer {
   registerTool(
     name: string,
     _config: unknown,
-    handler: (args: Record<string, unknown>) => Promise<ToolResult>,
+    handler: ToolHandler,
   ) {
     this.tools.set(name, { handler });
   }
@@ -64,17 +63,12 @@ function getToolHandler(server: FakeServer, toolName: string): ToolHandler {
   return tool.handler;
 }
 
-function assertJsonToolResult(result: ToolResult): Record<string, unknown> {
-  assert.ok(result.structuredContent, "Tool should include structuredContent");
-
+function parseResult(result: ToolResult): Record<string, unknown> {
   const text = result.content?.[0]?.text;
   if (typeof text !== "string") {
     throw new Error("Tool should include text content");
   }
-
-  const parsed = JSON.parse(text) as Record<string, unknown>;
-  assert.deepEqual(parsed, result.structuredContent);
-  return parsed;
+  return JSON.parse(text) as Record<string, unknown>;
 }
 
 async function withMockedMapLayerFetch(
@@ -99,22 +93,18 @@ async function withMockedMapLayerFetch(
   }
 }
 
-test("avalanche_danger_rating_by_point returns zone, danger, and metadata", async () => {
+test("avalanche_danger_rating_by_point returns zone, danger, and forecast", async () => {
   const server = buildServer();
   const handler = getToolHandler(server, "avalanche_danger_rating_by_point");
 
   await withMockedMapLayerFetch(async (requestedUrls) => {
     const result = await handler({ lat: 40.5, lon: -111.5, centerId: "UAC" });
-    const output = assertJsonToolResult(result);
+    const output = parseResult(result);
 
     assert.equal(output.match, "inside_zone");
     assert.equal((output.zone as Record<string, unknown>).name, "Test Zone");
     assert.equal((output.center as Record<string, unknown>).id, "UAC");
     assert.equal((output.danger as Record<string, unknown>).level, 3);
-
-    const meta = output.meta as Record<string, unknown>;
-    assert.equal(meta.source, "Avalanche.org Public API");
-    assert.equal(typeof meta.request_url, "string");
     assert.ok(requestedUrls[0]?.includes("/v2/public/products/map-layer/UAC"));
   });
 });
@@ -126,36 +116,30 @@ test("historic_avalanche_danger_rating_by_point includes the requested day", asy
 
   await withMockedMapLayerFetch(async (requestedUrls) => {
     const result = await handler({ lat: 40.5, lon: -111.5, day });
-    const output = assertJsonToolResult(result);
+    const output = parseResult(result);
 
     assert.equal(output.day, day);
-    const meta = output.meta as Record<string, unknown>;
-    assert.equal(typeof meta.request_url, "string");
     assert.ok(requestedUrls[0]?.includes(`day=${day}`));
   });
 });
 
-test("raw_map_layer returns geojson payload and day metadata", async () => {
+test("raw_map_layer returns geojson payload", async () => {
   const server = buildServer();
   const handler = getToolHandler(server, "raw_map_layer");
   const day = "2026-03-15";
 
   await withMockedMapLayerFetch(async (requestedUrls) => {
     const result = await handler({ day });
-    const output = assertJsonToolResult(result);
+    const output = parseResult(result);
 
     const sample = buildSampleMapLayer();
     assert.deepEqual(output.geojson, sample);
-
-    const meta = output.meta as Record<string, unknown>;
-    assert.equal(meta.day, day);
-    assert.equal(Object.hasOwn(meta, "center_id"), false);
     assert.ok(requestedUrls[0]?.includes("/v2/public/products/map-layer"));
     assert.ok(requestedUrls[0]?.includes(`day=${day}`));
   });
 });
 
-test("raw_map_layer_by_avalanche_center scopes request to center and returns center metadata", async () => {
+test("raw_map_layer_by_avalanche_center scopes request to center", async () => {
   const server = buildServer();
   const handler = getToolHandler(server, "raw_map_layer_by_avalanche_center");
   const centerId = "CBAC";
@@ -163,12 +147,9 @@ test("raw_map_layer_by_avalanche_center scopes request to center and returns cen
 
   await withMockedMapLayerFetch(async (requestedUrls) => {
     const result = await handler({ centerId, day });
-    const output = assertJsonToolResult(result);
+    const output = parseResult(result);
 
-    const meta = output.meta as Record<string, unknown>;
-    assert.equal(meta.center_id, centerId);
-    assert.equal(meta.day, day);
-    assert.equal(typeof meta.request_url, "string");
+    assert.deepEqual(output.geojson, buildSampleMapLayer());
     assert.ok(requestedUrls[0]?.includes(`/v2/public/products/map-layer/${centerId}`));
     assert.ok(requestedUrls[0]?.includes(`day=${day}`));
   });

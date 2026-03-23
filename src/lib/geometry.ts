@@ -6,7 +6,6 @@ import type {
 } from "../types.js";
 
 const EARTH_RADIUS_KM = 6371.0088;
-const SEGMENT_EPSILON = 1e-10;
 
 export function geometryPolygons(
   geometry: SupportedGeometry,
@@ -43,30 +42,6 @@ export function pointInBounds(lat: number, lon: number, bounds: Bounds): boolean
   );
 }
 
-function pointOnSegment(
-  px: number,
-  py: number,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-): boolean {
-  const cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
-  if (Math.abs(cross) > SEGMENT_EPSILON) return false;
-
-  const dot = (px - x1) * (x2 - x1) + (py - y1) * (y2 - y1);
-  if (dot < -SEGMENT_EPSILON) return false;
-
-  const lenSq = (x2 - x1) ** 2 + (y2 - y1) ** 2;
-  if (lenSq <= SEGMENT_EPSILON) {
-    return Math.abs(px - x1) <= SEGMENT_EPSILON && Math.abs(py - y1) <= SEGMENT_EPSILON;
-  }
-
-  if (dot - lenSq > SEGMENT_EPSILON) return false;
-
-  return true;
-}
-
 export function pointInRing(lat: number, lon: number, ring: LinearRing): boolean {
   if (ring.length < 3) return false;
 
@@ -77,8 +52,6 @@ export function pointInRing(lat: number, lon: number, ring: LinearRing): boolean
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
     const [xi, yi] = ring[i];
     const [xj, yj] = ring[j];
-
-    if (pointOnSegment(px, py, xi, yi, xj, yj)) return true;
 
     const intersects =
       (yi > py) !== (yj > py) &&

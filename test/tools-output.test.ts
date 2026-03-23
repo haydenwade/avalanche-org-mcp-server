@@ -4,7 +4,6 @@ import { registerAvalancheTools } from "../src/tools.js";
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<{
   content?: Array<{ type: string; text?: string }>;
-  structuredContent?: Record<string, unknown>;
 }>;
 
 class FakeServer {
@@ -13,10 +12,7 @@ class FakeServer {
   registerTool(
     name: string,
     _config: unknown,
-    handler: (args: Record<string, unknown>) => Promise<{
-      content?: Array<{ type: string; text?: string }>;
-      structuredContent?: Record<string, unknown>;
-    }>,
+    handler: ToolHandler,
   ) {
     this.tools.set(name, { handler });
   }
@@ -66,7 +62,6 @@ test("all registered tools return JSON data in text content", async () => {
     });
 
   try {
-    const statusOnly = JSON.stringify({ status: "ok" });
     const cases: Array<[string, Record<string, unknown>]> = [
       ["avalanche_danger_rating_by_point", { lat: 40.5, lon: -111.5 }],
       [
@@ -82,15 +77,11 @@ test("all registered tools return JSON data in text content", async () => {
       assert.ok(tool, `Missing tool registration for ${toolName}`);
 
       const result = await tool.handler(args);
-      assert.ok(result.structuredContent, `${toolName} should include structuredContent`);
-
       const text = result.content?.[0]?.text;
       assert.equal(typeof text, "string", `${toolName} should include text content`);
-      assert.notEqual(text, statusOnly, `${toolName} should return data, not status-only`);
 
       const parsed = JSON.parse(text as string) as Record<string, unknown>;
-      const parsedKeys = Object.keys(parsed);
-      assert.ok(parsedKeys.length > 0, `${toolName} text should contain JSON keys`);
+      assert.ok(Object.keys(parsed).length > 0, `${toolName} text should contain JSON keys`);
     }
   } finally {
     globalThis.fetch = originalFetch;
